@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "amr-esm-prediction"
+version = "0.1.0"
+description = "ESM-2 fitness landscape prediction for pre-emptive AMR diagnostic design"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "torch>=2.0",
+    "fair-esm>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["models*", "experiments*"]

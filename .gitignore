@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (large files — use DVC or manual download)
+data/cryptic/*.vcf
+data/cryptic/*.bam
+data/protein_sequences/*.fasta
+*.h5
+*.hdf5
+
+# Model weights (download separately)
+models/weights/
+
+# Results (regenerable)
+results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.key
+
+# W&B
+wandb/

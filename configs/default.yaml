@@ -1,0 +1,24 @@
+# ESM-2 AMR Fitness Landscape — Default Configuration
+
+esm2:
+  model_name: "esm2_t33_650M_UR50D"  # 650M params, good balance of speed/accuracy
+  # Alternative: esm2_t36_3B_UR50D for higher accuracy (needs >8GB VRAM)
+  device: "cuda"  # auto-fallback to cpu if unavailable
+  batch_size: 1   # ESM-2 processes one protein at a time for masked marginal
+
+analysis:
+  min_targets_per_group: 5    # Minimum N for per-organism Spearman
+  min_targets_pooled: 10      # Minimum N for pooled analysis
+  permutation_n: 10000        # Permutation test iterations
+  fdr_alpha: 0.05             # Benjamini-Hochberg FDR threshold
+  confidence_interval: 0.95   # Bootstrap CI level
+
+panel_design:
+  coverage_target: 0.90       # Target 90% of resistant cases
+  max_panel_size: 10          # Maximum mutations in diagnostic panel
+  llr_threshold: null         # Auto-determined from data if null
+
+paths:
+  protein_sequences: "data/protein_sequences/"
+  who_catalogue: "data/who_catalogue/"
+  results: "results/"
