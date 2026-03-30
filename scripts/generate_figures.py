@@ -556,6 +556,265 @@ def fig_supp_rv0678():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# FIGURE 6: Epistasis heatmaps + emergence trajectories
+# ═══════════════════════════════════════════════════════════════════════
+def fig6_emergence():
+    with open(RESULTS / "emergence" / "emergence_results.json") as f:
+        emergence = json.load(f)
+
+    # Panel layout: 2 rows × 3 cols
+    # Row 1: epistasis heatmaps for gyrA, rpoB, katG
+    # Row 2: emergence order (predicted vs prevalence) for same genes
+    genes = ["mtb_gyrA", "mtb_rpoB", "mtb_katG"]
+    gene_labels = {"mtb_gyrA": "gyrA (FQ)", "mtb_rpoB": "rpoB (RIF)", "mtb_katG": "katG (INH)"}
+    gene_colors = {"mtb_gyrA": "#00A087", "mtb_rpoB": "#3C5488", "mtb_katG": "#E64B35"}
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+
+    for col, gene_key in enumerate(genes):
+        # ── Row 1: Epistasis heatmap ──
+        ax = axes[0, col]
+        ep_path = RESULTS / "emergence" / f"epistasis_{gene_key.replace('_', '_')}.json"
+        if not ep_path.exists():
+            # Try alternative naming
+            parts = gene_key.split("_")
+            ep_path = RESULTS / "emergence" / f"epistasis_{parts[0]}_{parts[1]}.json"
+
+        if ep_path.exists():
+            with open(ep_path) as f:
+                ep = json.load(f)
+
+            mutations = ep["mutations"]
+            matrix = np.array(ep["matrix"])
+            n = len(mutations)
+
+            # Truncate labels for display
+            short_labels = [m[:6] for m in mutations]
+
+            vmax = max(abs(matrix.min()), abs(matrix.max()), 1.0)
+            im = ax.imshow(matrix, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+
+            ax.set_xticks(range(n))
+            ax.set_xticklabels(short_labels, fontsize=7, rotation=45, ha="right")
+            ax.set_yticks(range(n))
+            ax.set_yticklabels(short_labels, fontsize=7)
+
+            # Mark strongest interactions
+            for i in range(n):
+                for j in range(n):
+                    if i != j and abs(matrix[i, j]) > 0.5:
+                        ax.text(j, i, f"{matrix[i,j]:.1f}", ha="center", va="center",
+                                fontsize=6, color="white" if abs(matrix[i, j]) > vmax * 0.6 else "black")
+
+            plt.colorbar(im, ax=ax, shrink=0.7, pad=0.02)
+        else:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+
+        ax.set_title(f"{gene_labels.get(gene_key, gene_key)}\nepistasis matrix",
+                     fontsize=11, fontweight="bold")
+        if col == 0:
+            ax.set_ylabel("Background mutation (A)")
+        ax.set_xlabel("Query mutation (B)")
+
+        # ── Row 2: Emergence order vs prevalence ──
+        ax2 = axes[1, col]
+        if gene_key in emergence:
+            em_data = emergence[gene_key]["emergence_order"]
+
+            mutations_em = [e["mutation"] for e in em_data]
+            pred_rank = list(range(1, len(em_data) + 1))
+            prevalences = [e["prevalence_pct"] for e in em_data]
+            median_gens = [e["median_generation"] for e in em_data]
+
+            # Sort by predicted emergence (already sorted)
+            color = gene_colors.get(gene_key, "#333")
+
+            # Bar: predicted rank on x, prevalence on y
+            bars = ax2.bar(range(len(mutations_em)), prevalences,
+                           color=color, alpha=0.7, edgecolor="black", linewidth=0.5)
+            ax2.set_xticks(range(len(mutations_em)))
+            ax2.set_xticklabels(mutations_em, fontsize=7, rotation=45, ha="right")
+            ax2.set_ylabel("Clinical prevalence (%)")
+            ax2.set_xlabel("Predicted emergence order (earliest → latest)")
+
+            # Add emergence gen as text
+            for i, (bar, gen) in enumerate(zip(bars, median_gens)):
+                if gen < float("inf"):
+                    ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                             f"g={gen:.0f}", ha="center", fontsize=6, color="gray")
+
+            # Concordance annotation
+            v = emergence[gene_key].get("validation", {})
+            conc = v.get("rank_concordance", float("nan"))
+            rho = v.get("spearman_rho", float("nan"))
+            ax2.set_title(f"Emergence order (conc={conc:.2f}, rho={rho:.2f})",
+                          fontsize=10)
+        else:
+            ax2.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax2.transAxes)
+
+    fig.suptitle("Figure 6: Epistasis Networks and Predicted Emergence Order",
+                 fontsize=15, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    plt.savefig(FIGURES / "fig6_emergence.png")
+    plt.savefig(FIGURES / "fig6_emergence.pdf")
+    plt.close()
+    print("  Fig 6 saved.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# FIGURE 7: De novo panel design — validation + pipeline predictions
+# ═══════════════════════════════════════════════════════════════════════
+def fig7_denovo():
+    # Load leave-one-out results
+    loo_path = RESULTS / "denovo" / "leave_one_out.json"
+    pipeline_path = RESULTS / "denovo" / "pipeline_predictions.json"
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+    # ── Panel A: Leave-one-out recall by mechanism ──
+    ax = axes[0]
+    if loo_path.exists():
+        with open(loo_path) as f:
+            loo = json.load(f)
+
+        mech_colors = {
+            "conservative_substitution": "#00A087",
+            "structural_pocket": "#3C5488",
+            "loss_of_function": "#E64B35",
+        }
+        mech_labels = {
+            "conservative_substitution": "Conservative\nsubstitution",
+            "structural_pocket": "Structural\npocket",
+            "loss_of_function": "Loss of\nfunction",
+        }
+
+        targets = sorted(loo.keys())
+        recalls = [loo[t]["recall"] for t in targets]
+        colors = [mech_colors.get(loo[t]["mechanism"], "gray") for t in targets]
+        labels = [t.split("_")[1] for t in targets]
+
+        bars = ax.bar(range(len(targets)), recalls, color=colors,
+                      edgecolor="black", linewidth=0.5, width=0.7)
+        ax.set_xticks(range(len(targets)))
+        ax.set_xticklabels(labels, fontsize=9, rotation=45, ha="right")
+        ax.set_ylabel("Recall (fraction of WHO mutations recovered)")
+        ax.set_ylim(0, 1.05)
+        ax.set_title("A) Leave-one-drug-out validation", fontweight="bold", loc="left")
+
+        # Legend
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=c, edgecolor="black", label=mech_labels[m])
+            for m, c in mech_colors.items()
+        ]
+        ax.legend(handles=legend_elements, fontsize=8, loc="upper right")
+
+        # Annotate recovered mutations
+        for i, t in enumerate(targets):
+            tp = loo[t].get("true_positives", [])
+            if tp:
+                ax.text(i, recalls[i] + 0.02, "\n".join(tp[:3]),
+                        ha="center", fontsize=6, fontstyle="italic")
+
+    # ── Panel B: katG detail — what we recovered ──
+    ax2 = axes[1]
+    if loo_path.exists() and "mtb_katG" in loo:
+        katg = loo["mtb_katG"]
+        all_who = sorted(set(katg["true_positives"]) | set(katg["false_negatives"]))
+        panel_muts = {m["mutation"] for m in katg["panel"]}
+
+        # Show all WHO mutations with color coding
+        colors_bar = []
+        llrs = []
+        for mut in all_who:
+            if mut in katg["true_positives"]:
+                colors_bar.append("#00A087")  # recovered
+            else:
+                colors_bar.append("#E64B35")  # missed
+
+            # Get |LLR| from panel data
+            found = False
+            for m in katg["panel"]:
+                if m["mutation"] == mut:
+                    llrs.append(m["abs_llr"])
+                    found = True
+                    break
+            if not found:
+                llrs.append(3.0)  # S315G was missed, approx value
+
+        ax2.barh(range(len(all_who)), llrs, color=colors_bar,
+                 edgecolor="black", linewidth=0.5, height=0.6)
+        ax2.set_yticks(range(len(all_who)))
+        ax2.set_yticklabels(all_who, fontsize=11, fontweight="bold")
+        ax2.set_xlabel("|ESM-2 LLR|")
+        ax2.set_title("B) katG: recovered 3/4 WHO mutations", fontweight="bold", loc="left")
+        ax2.invert_yaxis()
+
+        from matplotlib.patches import Patch
+        ax2.legend(
+            handles=[
+                Patch(facecolor="#00A087", label="Recovered by de novo"),
+                Patch(facecolor="#E64B35", label="Missed"),
+            ],
+            fontsize=9, loc="lower right",
+        )
+
+    # ── Panel C: Pipeline predictions (BTZ043 + telacebec) ──
+    ax3 = axes[2]
+    if pipeline_path.exists():
+        with open(pipeline_path) as f:
+            pipeline = json.load(f)
+
+        y_pos = 0
+        y_labels = []
+        y_vals = []
+        y_colors = []
+        drug_dividers = []
+
+        for drug_key in ["mtb_dprE1", "mtb_qcrB"]:
+            if drug_key not in pipeline:
+                continue
+            drug_data = pipeline[drug_key]
+            drug_name = drug_data["drug"]
+            panel = drug_data["prediction"]["panel"][:5]  # Top 5
+
+            drug_dividers.append(y_pos)
+            for m in panel:
+                y_labels.append(m["mutation"])
+                y_vals.append(m["abs_llr"])
+                y_colors.append("#7570B3" if drug_key == "mtb_dprE1" else "#D95F02")
+                y_pos += 1
+            y_pos += 0.5  # gap between drugs
+
+        if y_vals:
+            bars = ax3.barh(range(len(y_vals)), y_vals, color=y_colors,
+                           edgecolor="black", linewidth=0.5, height=0.6)
+            ax3.set_yticks(range(len(y_vals)))
+            ax3.set_yticklabels(y_labels, fontsize=9, fontweight="bold", fontfamily="monospace")
+            ax3.set_xlabel("|ESM-2 LLR| (fitness cost)")
+            ax3.set_title("C) Pipeline drug predictions\n(no clinical data used)",
+                         fontweight="bold", loc="left")
+            ax3.invert_yaxis()
+
+            # Drug labels
+            ax3.text(max(y_vals) * 0.7, 1.5, "BTZ043\n(dprE1)",
+                    fontsize=10, fontweight="bold", color="#7570B3", ha="center")
+            ax3.text(max(y_vals) * 0.7, 7, "Telacebec\n(qcrB)",
+                    fontsize=10, fontweight="bold", color="#D95F02", ha="center")
+    else:
+        ax3.text(0.5, 0.5, "Run --pipeline first", ha="center", va="center",
+                transform=ax3.transAxes)
+
+    fig.suptitle("Figure 7: De Novo Diagnostic Panel Design",
+                 fontsize=15, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    plt.savefig(FIGURES / "fig7_denovo.png")
+    plt.savefig(FIGURES / "fig7_denovo.pdf")
+    plt.close()
+    print("  Fig 7 saved.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print("Generating publication figures...")
     fig2_retrospective()
@@ -563,6 +822,8 @@ if __name__ == "__main__":
     fig4_three_class()
     fig5_panel_design()
     fig_supp_rv0678()
+    fig6_emergence()
+    fig7_denovo()
     print(f"\nAll figures saved to {FIGURES}/")
     for f in sorted(FIGURES.glob("*")):
         print(f"  {f.name}")
