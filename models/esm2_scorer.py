@@ -313,6 +313,35 @@ class ESM2Scorer:
 
         return landscape
 
+    def get_representations(
+        self,
+        protein_sequence: str,
+        repr_layer: int = 33,
+    ) -> torch.Tensor:
+        """Extract per-residue ESM-2 representations.
+
+        Returns the hidden-state tensor at the specified transformer layer.
+        Same VRAM cost as a normal forward pass — representations are a
+        byproduct of the forward computation.
+
+        Args:
+            protein_sequence: Full protein sequence.
+            repr_layer: Transformer layer to extract (33 = last for 650M model).
+
+        Returns:
+            Tensor of shape [seq_len, embed_dim] (1280 for 650M model).
+        """
+        _, _, tokens = self.batch_converter([("protein", protein_sequence)])
+        tokens = tokens.to(self.device)
+
+        with torch.no_grad():
+            results = self.model(
+                tokens, repr_layers=[repr_layer], return_contacts=False
+            )
+
+        # Strip CLS (position 0) and EOS (last position)
+        return results["representations"][repr_layer][0, 1:-1, :]
+
     def cleanup(self):
         """Free GPU memory."""
         del self.model
