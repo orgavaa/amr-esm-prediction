@@ -191,27 +191,28 @@ class ESM2Scorer:
             gene: Gene name (for labeling).
 
         Returns:
-            List of LLRResult, one per mutation.
+            List of LLRResult, one per mutation, in INPUT ORDER.
         """
-        # Group mutations by position for efficiency
-        by_position: dict[int, list[tuple[str, str, str]]] = {}
-        for mut in mutations:
+        # Group mutations by position for efficiency, tracking input index
+        by_position: dict[int, list[tuple[int, str, str, str]]] = {}
+        for idx, mut in enumerate(mutations):
             ref_aa, position, alt_aa = parse_aa_mutation(mut)
-            by_position.setdefault(position, []).append((mut, ref_aa, alt_aa))
+            by_position.setdefault(position, []).append((idx, mut, ref_aa, alt_aa))
 
-        results = []
+        # Build results indexed by input position
+        results: list[tuple[int, LLRResult]] = []
         for position, muts in sorted(by_position.items()):
             pos_idx = position - 1
 
             if pos_idx < 0 or pos_idx >= len(protein_sequence):
-                for mut, ref_aa, alt_aa in muts:
-                    results.append(LLRResult(
+                for idx, mut, ref_aa, alt_aa in muts:
+                    results.append((idx, LLRResult(
                         gene=gene, mutation=mut,
                         ref_aa=ref_aa, position=position, alt_aa=alt_aa,
                         llr=float("nan"), abs_llr=float("nan"),
                         ref_log_prob=float("nan"), alt_log_prob=float("nan"),
                         ref_aa_actual="", status="position_out_of_range",
-                    ))
+                    )))
                 continue
 
             actual_aa = protein_sequence[pos_idx]
@@ -230,20 +231,22 @@ class ESM2Scorer:
 
             log_probs = F.log_softmax(logits[0, pos_idx + 1], dim=-1)
 
-            for mut, ref_aa, alt_aa in muts:
+            for idx, mut, ref_aa, alt_aa in muts:
                 ref_lp = log_probs[self.alphabet.get_idx(ref_aa)].item()
                 alt_lp = log_probs[self.alphabet.get_idx(alt_aa)].item()
                 llr = alt_lp - ref_lp
 
-                results.append(LLRResult(
+                results.append((idx, LLRResult(
                     gene=gene, mutation=mut,
                     ref_aa=ref_aa, position=position, alt_aa=alt_aa,
                     llr=round(llr, 6), abs_llr=round(abs(llr), 6),
                     ref_log_prob=round(ref_lp, 6), alt_log_prob=round(alt_lp, 6),
                     ref_aa_actual=actual_aa, status="computed",
-                ))
+                )))
 
-        return results
+        # Return in input order
+        results.sort(key=lambda t: t[0])
+        return [r for _, r in results]
 
     def score_full_landscape(
         self,

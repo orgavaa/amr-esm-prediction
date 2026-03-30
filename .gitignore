@@ -37,10 +37,12 @@ results/
 # OS
 .DS_Store
 Thumbs.db
-
 # Secrets
 .env
 *.key
 
 # W&B
 wandb/
+
+#claude
+.claude/
